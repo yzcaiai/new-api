@@ -747,7 +747,7 @@ export const useChannelsData = () => {
   };
 
   const updateChannelBalance = async (record) => {
-    if (record?.type === 57) {
+    if (record?.type === 59) {
       openCodexUsageModal({
         t,
         record,

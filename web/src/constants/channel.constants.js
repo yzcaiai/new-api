@@ -185,7 +185,12 @@ export const CHANNEL_OPTIONS = [
     label: 'Replicate',
   },
   {
-    value: 57,
+    value: 58,
+    color: 'blue',
+    label: 'NovelAIPassThrough',
+  },
+  {
+    value: 59,
     color: 'blue',
     label: 'Codex (OpenAI OAuth)',
   },

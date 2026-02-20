@@ -118,7 +118,7 @@ function type2secretPrompt(type) {
       return '按照如下格式输入: AccessKey|SecretKey, 如果上游是New API，则直接输ApiKey';
     case 51:
       return '按照如下格式输入: AccessKey|SecretAccessKey';
-    case 57:
+    case 59:
       return '请输入 JSON 格式的 OAuth 凭据（必须包含 access_token 和 account_id）';
     default:
       return '请输入渠道对应的鉴权密钥';
@@ -521,7 +521,7 @@ const EditChannelModal = (props) => {
       // 重置手动输入模式状态
       setUseManualInput(false);
 
-      if (value === 57) {
+      if (value === 59) {
         setBatch(false);
         setMultiToSingle(false);
         setMultiKeyMode('random');
@@ -1171,7 +1171,7 @@ const EditChannelModal = (props) => {
     const formValues = formApiRef.current ? formApiRef.current.getValues() : {};
     let localInputs = { ...formValues };
 
-    if (localInputs.type === 57) {
+    if (localInputs.type === 59) {
       if (batch) {
         showInfo(t('Codex 渠道不支持批量创建'));
         return;
@@ -1547,7 +1547,7 @@ const EditChannelModal = (props) => {
     }
   };
 
-  const batchAllowed = (!isEdit || isMultiKeyChannel) && inputs.type !== 57;
+  const batchAllowed = (!isEdit || isMultiKeyChannel) && inputs.type !== 59;
   const batchExtra = batchAllowed ? (
     <Space>
       {!isEdit && (
@@ -1865,7 +1865,7 @@ const EditChannelModal = (props) => {
                       disabled={isIonetLocked}
                     />
 
-                    {inputs.type === 57 && (
+                    {inputs.type === 59 && (
                       <Banner
                         type='warning'
                         closeIcon={null}
@@ -2048,7 +2048,7 @@ const EditChannelModal = (props) => {
                       )
                     ) : (
                       <>
-                        {inputs.type === 57 ? (
+                        {inputs.type === 59 ? (
                           <>
                             <Form.TextArea
                               field='key'

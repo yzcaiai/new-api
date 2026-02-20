@@ -5,12 +5,19 @@ import (
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/relay"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
 
 func SetRelayRouter(router *gin.Engine) {
+	generateRelayHandler := func(c *gin.Context) {
+		c.Request.URL.Path = "/v1/chat/completions"
+		c.Set("relay_mode", relayconstant.RelayModeChatCompletions)
+		controller.Relay(c, types.RelayFormatOpenAI)
+	}
+
 	router.Use(middleware.CORS())
 	router.Use(middleware.DecompressRequestMiddleware())
 	router.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
@@ -62,6 +69,24 @@ func SetRelayRouter(router *gin.Engine) {
 	{
 		playgroundRouter.POST("/chat/completions", controller.Playground)
 	}
+	generateRouter := router.Group("")
+	generateRouter.Use(middleware.SystemPerformanceCheck())
+	generateRouter.Use(middleware.TokenAuth())
+	generateRouter.Use(middleware.ModelRequestRateLimit())
+	generateRouter.Use(middleware.Distribute())
+	{
+		generateRouter.POST("/generate", generateRelayHandler)
+	}
+
+	gatewayV1Router := router.Group("/v1")
+	gatewayV1Router.Use(middleware.SystemPerformanceCheck())
+	gatewayV1Router.Use(middleware.TokenAuth())
+	gatewayV1Router.Use(middleware.ModelRequestRateLimit())
+	gatewayV1Router.Use(middleware.Distribute())
+	{
+		gatewayV1Router.POST("/generate", generateRelayHandler)
+	}
+
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.SystemPerformanceCheck())
 	relayV1Router.Use(middleware.TokenAuth())

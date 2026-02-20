@@ -116,6 +116,39 @@ func UnmarshalBodyReusable(c *gin.Context, v any) error {
 	}
 	contentType := c.Request.Header.Get("Content-Type")
 	if strings.HasPrefix(contentType, "application/json") {
+		channelType := GetContextKeyInt(c, constant.ContextKeyChannelType)
+		if channelType == constant.ChannelTypeNovelAIPassThrough {
+			payload := make(map[string]any)
+			if unmarshalErr := Unmarshal(requestBody, &payload); unmarshalErr == nil {
+				delete(payload, "stream")
+				payload["return_base64"] = true
+				if parameters, ok := payload["parameters"].(map[string]any); ok {
+					parameters["return_base64"] = true
+					payload["parameters"] = parameters
+				}
+				if mutated, marshalErr := Marshal(payload); marshalErr != nil {
+					return marshalErr
+				} else {
+					requestBody = mutated
+					newStorage, replaceErr := CreateBodyStorage(mutated)
+					if replaceErr != nil {
+						return replaceErr
+					}
+					if _, seekErr := newStorage.Seek(0, io.SeekStart); seekErr != nil {
+						newStorage.Close()
+						return seekErr
+					}
+					if oldStorage, exists := c.Get(KeyBodyStorage); exists {
+						if oldBs, ok := oldStorage.(BodyStorage); ok {
+							oldBs.Close()
+						}
+					}
+					storage = newStorage
+					c.Set(KeyBodyStorage, storage)
+					c.Request.Body = io.NopCloser(storage)
+				}
+			}
+		}
 		err = Unmarshal(requestBody, v)
 	} else if strings.Contains(contentType, gin.MIMEPOSTForm) {
 		err = parseFormData(requestBody, v)

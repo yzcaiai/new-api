@@ -22,6 +22,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
+	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/shopspring/decimal"
 
 	"github.com/gin-gonic/gin"
@@ -209,6 +210,11 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		return newApiErr
 	}
 
+	if info.ChannelType == constant.ChannelTypeNovelAIPassThrough {
+		postNovelAIPassThroughConsumeQuota(c, info, httpResp)
+		return nil
+	}
+
 	var containAudioTokens = usage.(*dto.Usage).CompletionTokenDetails.AudioTokens > 0 || usage.(*dto.Usage).PromptTokensDetails.AudioTokens > 0
 	var containsAudioRatios = ratio_setting.ContainsAudioRatio(info.OriginModelName) || ratio_setting.ContainsAudioCompletionRatio(info.OriginModelName)
 
@@ -218,6 +224,82 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		postConsumeQuota(c, info, usage.(*dto.Usage))
 	}
 	return nil
+}
+
+const novelAIPassThroughFixedQuota = 1000
+
+func postNovelAIPassThroughConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, resp *http.Response) {
+	if resp == nil || resp.StatusCode != http.StatusOK {
+		return
+	}
+
+	tokenName := ctx.GetString("token_name")
+	useTimeSeconds := time.Now().Unix() - relayInfo.StartTime.Unix()
+	isStream := relayInfo.IsStream
+	group := relayInfo.UsingGroup
+	userId := relayInfo.UserId
+	channelId := relayInfo.ChannelId
+	tokenId := relayInfo.TokenId
+	originModelName := relayInfo.OriginModelName
+	upstreamModelName := relayInfo.UpstreamModelName
+
+	// copy relay info fields required by SettleBilling/checkAndSendQuotaNotify
+	settleRelayInfo := &relaycommon.RelayInfo{
+		Billing:                               relayInfo.Billing,
+		BillingSource:                         relayInfo.BillingSource,
+		FinalPreConsumedQuota:                 relayInfo.FinalPreConsumedQuota,
+		IsPlayground:                          relayInfo.IsPlayground,
+		UserId:                                userId,
+		TokenId:                               tokenId,
+		TokenKey:                              relayInfo.TokenKey,
+		UserEmail:                             relayInfo.UserEmail,
+		UserSetting:                           relayInfo.UserSetting,
+		UserQuota:                             relayInfo.UserQuota,
+		SubscriptionId:                        relayInfo.SubscriptionId,
+		SubscriptionAmountTotal:               relayInfo.SubscriptionAmountTotal,
+		SubscriptionAmountUsedAfterPreConsume: relayInfo.SubscriptionAmountUsedAfterPreConsume,
+		SubscriptionPostDelta:                 relayInfo.SubscriptionPostDelta,
+	}
+
+	gopool.Go(func() {
+		quota := novelAIPassThroughFixedQuota
+		if quota <= 0 {
+			return
+		}
+		model.UpdateUserUsedQuotaAndRequestCount(userId, quota)
+		model.UpdateChannelUsedQuota(channelId, quota)
+
+		if err := service.SettleBilling(ctx, settleRelayInfo, quota); err != nil {
+			logger.LogError(ctx, "error settling billing: "+err.Error())
+		}
+
+		logModel := originModelName
+		if logModel == "" {
+			logModel = upstreamModelName
+		}
+		if logModel == "" {
+			logModel = "novelai-passthrough"
+		}
+		other := map[string]interface{}{
+			"fixed_quota":     true,
+			"quota_mode":      "novelai_passthrough",
+			"upstream_status": resp.StatusCode,
+		}
+		model.RecordConsumeLog(ctx, userId, model.RecordConsumeLogParams{
+			ChannelId:        channelId,
+			PromptTokens:     0,
+			CompletionTokens: 0,
+			ModelName:        logModel,
+			TokenName:        tokenName,
+			Quota:            quota,
+			Content:          fmt.Sprintf("NovelAIPassThrough 固定扣费 %d", quota),
+			TokenId:          tokenId,
+			UseTimeSeconds:   int(useTimeSeconds),
+			IsStream:         isStream,
+			Group:            group,
+			Other:            other,
+		})
+	})
 }
 
 func postConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent ...string) {
