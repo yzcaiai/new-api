@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -637,6 +638,53 @@ func (info *RelayInfo) SetEstimatePromptTokens(promptTokens int) {
 
 func (info *RelayInfo) GetEstimatePromptTokens() int {
 	return info.estimatePromptTokens
+}
+
+func (info *RelayInfo) GetTextPricingMode() string {
+	if info == nil {
+		return ratio_setting.TextPricingModeStandard
+	}
+
+	requestPath := strings.ToLower(info.RequestURLPath)
+	if strings.HasPrefix(requestPath, "/v1/batch") {
+		return ratio_setting.TextPricingModeBatch
+	}
+
+	if info.ChannelMeta == nil || !info.ChannelMeta.ChannelOtherSettings.AllowServiceTier {
+		return ratio_setting.TextPricingModeStandard
+	}
+
+	serviceTier := ""
+	switch req := info.Request.(type) {
+	case *dto.GeneralOpenAIRequest:
+		serviceTier = parseServiceTierRawMessage(req.ServiceTier)
+	case *dto.OpenAIResponsesRequest:
+		serviceTier = strings.TrimSpace(req.ServiceTier)
+	case *dto.ClaudeRequest:
+		serviceTier = strings.TrimSpace(req.ServiceTier)
+	}
+
+	switch strings.ToLower(serviceTier) {
+	case ratio_setting.TextPricingModeFlex:
+		return ratio_setting.TextPricingModeFlex
+	case ratio_setting.TextPricingModePriority:
+		return ratio_setting.TextPricingModePriority
+	default:
+		return ratio_setting.TextPricingModeStandard
+	}
+}
+
+func parseServiceTierRawMessage(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+
+	var serviceTier string
+	if err := common.Unmarshal(raw, &serviceTier); err == nil {
+		return strings.TrimSpace(serviceTier)
+	}
+
+	return strings.Trim(strings.TrimSpace(string(raw)), "\"")
 }
 
 func (info *RelayInfo) SetFirstResponseTime() {

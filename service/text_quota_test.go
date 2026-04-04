@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -315,4 +316,216 @@ func TestCalculateTextQuotaSummaryKeepsPrePRClaudeOpenRouterBilling(t *testing.T
 	require.True(t, summary.IsClaudeUsageSemantic)
 	require.Equal(t, 172, summary.PromptTokens)
 	require.Equal(t, 798, summary.Quota)
+}
+
+func TestCalculateTextQuotaSummaryGPT54LongContextThreshold(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	testCases := []struct {
+		name                    string
+		inputTokens             int
+		expectedModelRatio      float64
+		expectedCompletionRatio float64
+		expectedQuota           int
+	}{
+		{
+			name:                    "below threshold keeps short pricing",
+			inputTokens:             271999,
+			expectedModelRatio:      1.25,
+			expectedCompletionRatio: 6,
+			expectedQuota:           339999,
+		},
+		{
+			name:                    "threshold boundary keeps short pricing",
+			inputTokens:             272000,
+			expectedModelRatio:      1.25,
+			expectedCompletionRatio: 6,
+			expectedQuota:           340000,
+		},
+		{
+			name:                    "above threshold switches whole request to long pricing",
+			inputTokens:             272001,
+			expectedModelRatio:      2.5,
+			expectedCompletionRatio: 4.5,
+			expectedQuota:           680003,
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			relayInfo := &relaycommon.RelayInfo{
+				OriginModelName: "gpt-5.4",
+				PriceData: types.PriceData{
+					ModelRatio:      1.25,
+					CompletionRatio: 6,
+					CacheRatio:      0.1,
+					GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 1},
+				},
+				StartTime: time.Now(),
+			}
+
+			usage := &dto.Usage{
+				PromptTokens:     tt.inputTokens,
+				CompletionTokens: 0,
+				TotalTokens:      tt.inputTokens,
+			}
+
+			summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+			require.Equal(t, tt.expectedModelRatio, summary.ModelRatio)
+			require.Equal(t, tt.expectedCompletionRatio, summary.CompletionRatio)
+			require.Equal(t, tt.expectedQuota, summary.Quota)
+		})
+	}
+}
+
+func TestCalculateTextQuotaSummaryGPT54CachedInputPricing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	testCases := []struct {
+		name               string
+		promptTokens       int
+		expectedModelRatio float64
+		expectedCacheRatio float64
+		expectedQuota      int
+	}{
+		{
+			name:               "short context keeps short cached input pricing",
+			promptTokens:       272000,
+			expectedModelRatio: 1.25,
+			expectedCacheRatio: 0.1,
+			expectedQuota:      227500,
+		},
+		{
+			name:               "long context keeps long cached input pricing",
+			promptTokens:       272002,
+			expectedModelRatio: 2.5,
+			expectedCacheRatio: 0.1,
+			expectedQuota:      455005,
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			relayInfo := &relaycommon.RelayInfo{
+				OriginModelName: "gpt-5.4",
+				PriceData: types.PriceData{
+					ModelRatio:      1.25,
+					CompletionRatio: 6,
+					CacheRatio:      0.1,
+					GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 1},
+				},
+				StartTime: time.Now(),
+			}
+
+			usage := &dto.Usage{
+				PromptTokens:     tt.promptTokens,
+				CompletionTokens: 0,
+				TotalTokens:      tt.promptTokens,
+				PromptTokensDetails: dto.InputTokenDetails{
+					CachedTokens: 100000,
+				},
+			}
+
+			summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+			require.Equal(t, tt.expectedModelRatio, summary.ModelRatio)
+			require.Equal(t, tt.expectedCacheRatio, summary.CacheRatio)
+			require.Equal(t, tt.expectedQuota, summary.Quota)
+		})
+	}
+}
+
+func TestCalculateTextQuotaSummaryGPT54UsesInputTokensThreshold(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-5.4",
+		PriceData: types.PriceData{
+			ModelRatio:      1.25,
+			CompletionRatio: 6,
+			CacheRatio:      0.1,
+			GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		InputTokens:      272001,
+		PromptTokens:     100,
+		CompletionTokens: 0,
+		TotalTokens:      100,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.True(t, summary.LongContextApplied)
+	require.Equal(t, 272001, summary.PricingInputTokens)
+	require.Equal(t, 272000, summary.LongContextThreshold)
+	require.Equal(t, 2.5, summary.ModelRatio)
+	require.Equal(t, 4.5, summary.CompletionRatio)
+	require.Equal(t, 250, summary.Quota)
+}
+
+func TestCalculateTextQuotaSummaryGPT54ProLongContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-5.4-pro-2026-03-05",
+		PriceData: types.PriceData{
+			ModelRatio:      15,
+			CompletionRatio: 6,
+			GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     272001,
+		CompletionTokens: 10,
+		TotalTokens:      272011,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 30.0, summary.ModelRatio)
+	require.Equal(t, 4.5, summary.CompletionRatio)
+	require.Equal(t, 8161380, summary.Quota)
+}
+
+func TestCalculateTextQuotaSummaryKeepsNonGPT54ModelsUnchanged(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	baseCompletionRatio := ratio_setting.GetCompletionRatio("gpt-4.1")
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-4.1",
+		PriceData: types.PriceData{
+			ModelRatio:      1,
+			CompletionRatio: baseCompletionRatio,
+			CacheRatio:      0.25,
+			GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     400000,
+		CompletionTokens: 0,
+		TotalTokens:      400000,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 1.0, summary.ModelRatio)
+	require.Equal(t, baseCompletionRatio, summary.CompletionRatio)
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -22,6 +23,7 @@ type textQuotaSummary struct {
 	PromptTokens             int
 	CompletionTokens         int
 	TotalTokens              int
+	PricingInputTokens       int
 	CacheTokens              int
 	CacheCreationTokens      int
 	CacheCreationTokens5m    int
@@ -51,6 +53,9 @@ type textQuotaSummary struct {
 	FileSearchCallCount      int
 	AudioInputPrice          float64
 	ImageGenerationCallPrice float64
+	TextPricingMode          string
+	LongContextApplied       bool
+	LongContextThreshold     int
 }
 
 func cacheWriteTokensTotal(summary textQuotaSummary) int {
@@ -112,6 +117,25 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 	summary.CacheCreationTokens1h = usage.ClaudeCacheCreation1hTokens
 	summary.ImageTokens = usage.PromptTokensDetails.ImageTokens
 	summary.AudioTokens = usage.PromptTokensDetails.AudioTokens
+
+	pricingInputTokens := summary.PromptTokens
+	if usage.InputTokens > 0 {
+		pricingInputTokens = usage.InputTokens
+	}
+	summary.PricingInputTokens = pricingInputTokens
+	summary.TextPricingMode = relayInfo.GetTextPricingMode()
+	if rule, ok := ratio_setting.GetTextInputThresholdPricingRule(summary.ModelName); ok {
+		summary.LongContextThreshold = rule.Threshold
+	}
+	summary.ModelRatio, summary.CompletionRatio, summary.CacheRatio, summary.LongContextApplied = ratio_setting.ResolveTextPricingRatios(
+		summary.ModelName,
+		pricingInputTokens,
+		summary.TextPricingMode,
+		summary.ModelRatio,
+		summary.CompletionRatio,
+		summary.CacheRatio,
+	)
+
 	legacyClaudeDerived := isLegacyClaudeDerivedOpenAIUsage(relayInfo, usage)
 	isOpenRouterClaudeBilling := relayInfo.ChannelMeta != nil &&
 		relayInfo.ChannelType == constant.ChannelTypeOpenRouter &&
@@ -411,6 +435,12 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		// reliable total input value and tagged the usage source. Do not infer it from
 		// prompt/cache fields here, otherwise old upstream payloads may be double-counted.
 		other["input_tokens_total"] = usage.InputTokens
+	}
+	if summary.LongContextApplied {
+		other["long_context_pricing_applied"] = true
+		other["long_context_input_tokens"] = summary.PricingInputTokens
+		other["long_context_threshold"] = summary.LongContextThreshold
+		other["long_context_pricing_mode"] = summary.TextPricingMode
 	}
 
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{

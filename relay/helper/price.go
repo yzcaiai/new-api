@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 )
 
 // https://docs.claude.com/en/docs/build-with-claude/prompt-caching#1-hour-cache-duration
@@ -62,10 +63,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	var audioCompletionRatio float64
 	var freeModel bool
 	if !usePrice {
-		preConsumedTokens := common.Max(promptTokens, common.PreConsumedQuota)
-		if meta.MaxTokens != 0 {
-			preConsumedTokens += meta.MaxTokens
-		}
+		preConsumedPromptTokens := common.Max(promptTokens, common.PreConsumedQuota)
 		var success bool
 		var matchName string
 		modelRatio, success, matchName = ratio_setting.GetModelRatio(info.OriginModelName)
@@ -87,8 +85,28 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		imageRatio, _ = ratio_setting.GetImageRatio(info.OriginModelName)
 		audioRatio = ratio_setting.GetAudioRatio(info.OriginModelName)
 		audioCompletionRatio = ratio_setting.GetAudioCompletionRatio(info.OriginModelName)
-		ratio := modelRatio * groupRatioInfo.GroupRatio
-		preConsumedQuota = int(float64(preConsumedTokens) * ratio)
+		effectiveModelRatio, effectiveCompletionRatio, _, _ := ratio_setting.ResolveTextPricingRatios(
+			info.OriginModelName,
+			promptTokens,
+			info.GetTextPricingMode(),
+			modelRatio,
+			completionRatio,
+			cacheRatio,
+		)
+		ratio := decimal.NewFromFloat(effectiveModelRatio * groupRatioInfo.GroupRatio)
+		preConsumedQuotaDecimal := decimal.NewFromInt(int64(preConsumedPromptTokens)).Mul(ratio)
+		if meta.MaxTokens != 0 {
+			estimatedCompletionRatio := decimal.NewFromInt(1)
+			if ratio_setting.HasTextInputThresholdPricingRule(info.OriginModelName) {
+				estimatedCompletionRatio = decimal.NewFromFloat(effectiveCompletionRatio)
+			}
+			preConsumedQuotaDecimal = preConsumedQuotaDecimal.Add(
+				decimal.NewFromInt(int64(meta.MaxTokens)).
+					Mul(estimatedCompletionRatio).
+					Mul(ratio),
+			)
+		}
+		preConsumedQuota = int(preConsumedQuotaDecimal.Round(0).IntPart())
 	} else {
 		if meta.ImagePriceRatio != 0 {
 			modelPrice = modelPrice * meta.ImagePriceRatio

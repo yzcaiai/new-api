@@ -94,6 +94,8 @@ var defaultModelRatio = map[string]float64{
 	"gpt-5":                            0.625,
 	"gpt-5-2025-08-07":                 0.625,
 	"gpt-5-chat-latest":                0.625,
+	"gpt-5.4":                          1.25, // $2.5 / 1M tokens
+	"gpt-5.4-pro":                      15.0, // $30 / 1M tokens
 	"gpt-5-mini":                       0.125,
 	"gpt-5-mini-2025-08-07":            0.125,
 	"gpt-5-nano":                       0.025,
@@ -716,6 +718,11 @@ func FormatMatchingModelName(name string) string {
 	}
 	if strings.HasPrefix(name, "gpt-4o-gizmo") {
 		name = "gpt-4o-gizmo-*"
+	}
+	if name == "gpt-5.4-pro" || strings.HasPrefix(name, "gpt-5.4-pro-") {
+		name = "gpt-5.4-pro"
+	} else if name == "gpt-5.4" || strings.HasPrefix(name, "gpt-5.4-") {
+		name = "gpt-5.4"
 	}
 	return name
 }

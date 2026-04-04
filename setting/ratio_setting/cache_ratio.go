@@ -30,6 +30,7 @@ var defaultCacheRatio = map[string]float64{
 	"gpt-4.1-mini":                        0.25,
 	"gpt-4.1-nano":                        0.25,
 	"gpt-5":                               0.1,
+	"gpt-5.4":                             0.1,
 	"gpt-5-2025-08-07":                    0.1,
 	"gpt-5-chat-latest":                   0.1,
 	"gpt-5-mini":                          0.1,
@@ -126,6 +127,7 @@ func UpdateCreateCacheRatioByJSONString(jsonStr string) error {
 
 // GetCacheRatio returns the cache ratio for a model
 func GetCacheRatio(name string) (float64, bool) {
+	name = FormatMatchingModelName(name)
 	ratio, ok := cacheRatioMap.Get(name)
 	if !ok {
 		return 1, false // Default to 1 if not found

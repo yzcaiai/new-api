@@ -423,6 +423,23 @@ export const useLogsData = () => {
           value: other.cache_creation_tokens,
         });
       }
+      if (logs[i].type === 2 && other?.long_context_pricing_applied) {
+        const inputTokens =
+          other?.long_context_input_tokens ||
+          other?.input_tokens_total ||
+          logs[i].prompt_tokens;
+        const threshold = other?.long_context_threshold || 272000;
+        expandDataLocal.push({
+          key: t('长上下文计费'),
+          value: t(
+            '该次请求的输入 tokens 为 {{inputTokens}}，超过阈值 {{threshold}}，因此整次请求按长上下文价格计费。日志中显示的输入、输出、缓存读取价格都是本次请求的实际计费价格，不是只对超出阈值的部分加价。',
+            {
+              inputTokens,
+              threshold,
+            },
+          ),
+        });
+      }
       if (logs[i].type === 2) {
         expandDataLocal.push({
           key: t('日志详情'),
