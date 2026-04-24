@@ -37,6 +37,26 @@ func TestModelPriceHelperPreConsumeUsesGPT54LongContextPricing(t *testing.T) {
 	require.Equal(t, 680003, priceData.QuotaToPreConsume)
 }
 
+func TestModelPriceHelperPreConsumeUsesGPT55LongContextPricing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-5.5-2026-04-24",
+		RequestURLPath:  "/v1/chat/completions",
+		Request:         &dto.GeneralOpenAIRequest{},
+	}
+
+	priceData, err := ModelPriceHelper(ctx, info, 272001, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	require.False(t, priceData.UsePrice)
+	require.Equal(t, 2.5, priceData.ModelRatio)
+	require.Equal(t, 6.0, priceData.CompletionRatio)
+	require.Equal(t, 0.1, priceData.CacheRatio)
+	require.Equal(t, 1360005, priceData.QuotaToPreConsume)
+}
+
 func TestModelPriceHelperPreConsumeUsesFlexWhenServiceTierAllowed(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

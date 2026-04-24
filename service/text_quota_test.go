@@ -381,6 +381,69 @@ func TestCalculateTextQuotaSummaryGPT54LongContextThreshold(t *testing.T) {
 	}
 }
 
+func TestCalculateTextQuotaSummaryGPT55LongContextThreshold(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	testCases := []struct {
+		name                    string
+		inputTokens             int
+		expectedModelRatio      float64
+		expectedCompletionRatio float64
+		expectedQuota           int
+	}{
+		{
+			name:                    "below threshold keeps short pricing",
+			inputTokens:             271999,
+			expectedModelRatio:      2.5,
+			expectedCompletionRatio: 6,
+			expectedQuota:           679998,
+		},
+		{
+			name:                    "threshold boundary keeps short pricing",
+			inputTokens:             272000,
+			expectedModelRatio:      2.5,
+			expectedCompletionRatio: 6,
+			expectedQuota:           680000,
+		},
+		{
+			name:                    "above threshold switches whole request to long pricing",
+			inputTokens:             272001,
+			expectedModelRatio:      5,
+			expectedCompletionRatio: 4.5,
+			expectedQuota:           1360005,
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			relayInfo := &relaycommon.RelayInfo{
+				OriginModelName: "gpt-5.5",
+				PriceData: types.PriceData{
+					ModelRatio:      2.5,
+					CompletionRatio: 6,
+					CacheRatio:      0.1,
+					GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 1},
+				},
+				StartTime: time.Now(),
+			}
+
+			usage := &dto.Usage{
+				PromptTokens:     tt.inputTokens,
+				CompletionTokens: 0,
+				TotalTokens:      tt.inputTokens,
+			}
+
+			summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+			require.Equal(t, tt.expectedModelRatio, summary.ModelRatio)
+			require.Equal(t, tt.expectedCompletionRatio, summary.CompletionRatio)
+			require.Equal(t, tt.expectedQuota, summary.Quota)
+		})
+	}
+}
+
 func TestCalculateTextQuotaSummaryGPT54CachedInputPricing(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

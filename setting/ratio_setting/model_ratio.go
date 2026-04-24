@@ -94,6 +94,8 @@ var defaultModelRatio = map[string]float64{
 	"gpt-5":                            0.625,
 	"gpt-5-2025-08-07":                 0.625,
 	"gpt-5-chat-latest":                0.625,
+	"gpt-5.5":                          2.5,  // $5 / 1M tokens
+	"gpt-5.5-pro":                      15.0, // $30 / 1M tokens
 	"gpt-5.4":                          1.25, // $2.5 / 1M tokens
 	"gpt-5.4-pro":                      15.0, // $30 / 1M tokens
 	"gpt-5-mini":                       0.125,
@@ -511,6 +513,9 @@ func getHardcodedCompletionModelRatio(name string) (float64, bool) {
 		}
 		// gpt-5 匹配
 		if strings.HasPrefix(name, "gpt-5") {
+			if strings.HasPrefix(name, "gpt-5.5") {
+				return 6, true
+			}
 			if strings.HasPrefix(name, "gpt-5.4") {
 				if strings.HasPrefix(name, "gpt-5.4-nano") {
 					return 6.25, true
@@ -719,7 +724,11 @@ func FormatMatchingModelName(name string) string {
 	if strings.HasPrefix(name, "gpt-4o-gizmo") {
 		name = "gpt-4o-gizmo-*"
 	}
-	if name == "gpt-5.4-pro" || strings.HasPrefix(name, "gpt-5.4-pro-") {
+	if name == "gpt-5.5-pro" || strings.HasPrefix(name, "gpt-5.5-pro-") {
+		name = "gpt-5.5-pro"
+	} else if name == "gpt-5.5" || strings.HasPrefix(name, "gpt-5.5-") {
+		name = "gpt-5.5"
+	} else if name == "gpt-5.4-pro" || strings.HasPrefix(name, "gpt-5.4-pro-") {
 		name = "gpt-5.4-pro"
 	} else if name == "gpt-5.4" || strings.HasPrefix(name, "gpt-5.4-") {
 		name = "gpt-5.4"

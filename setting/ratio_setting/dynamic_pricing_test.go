@@ -34,6 +34,55 @@ func TestResolveTextPricingRatiosGPT54Threshold(t *testing.T) {
 	}
 }
 
+func TestResolveTextPricingRatiosGPT55Threshold(t *testing.T) {
+	modelRatio, completionRatio, cacheRatio, applied := ResolveTextPricingRatios(
+		"gpt-5.5-2026-04-24",
+		272000,
+		TextPricingModeStandard,
+		2.5,
+		6,
+		0.1,
+	)
+	if applied {
+		t.Fatalf("expected short-context pricing at 272000 input tokens")
+	}
+	if modelRatio != 2.5 || completionRatio != 6 || cacheRatio != 0.1 {
+		t.Fatalf("unexpected short pricing: model=%v completion=%v cache=%v", modelRatio, completionRatio, cacheRatio)
+	}
+
+	modelRatio, completionRatio, cacheRatio, applied = ResolveTextPricingRatios(
+		"gpt-5.5-2026-04-24",
+		272001,
+		TextPricingModeStandard,
+		2.5,
+		6,
+		0.1,
+	)
+	if !applied {
+		t.Fatalf("expected long-context pricing above 272000 input tokens")
+	}
+	if modelRatio != 5 || completionRatio != 4.5 || cacheRatio != 0.1 {
+		t.Fatalf("unexpected long pricing: model=%v completion=%v cache=%v", modelRatio, completionRatio, cacheRatio)
+	}
+}
+
+func TestResolveTextPricingRatiosGPT55Pro(t *testing.T) {
+	modelRatio, completionRatio, cacheRatio, applied := ResolveTextPricingRatios(
+		"gpt-5.5-pro-2026-04-24",
+		272001,
+		TextPricingModeStandard,
+		15,
+		6,
+		0.1,
+	)
+	if !applied {
+		t.Fatalf("expected gpt-5.5-pro long-context pricing")
+	}
+	if modelRatio != 30 || completionRatio != 4.5 || cacheRatio != 0.1 {
+		t.Fatalf("unexpected gpt-5.5-pro long pricing: model=%v completion=%v cache=%v", modelRatio, completionRatio, cacheRatio)
+	}
+}
+
 func TestResolveTextPricingRatiosGPT54FlexShortAndLong(t *testing.T) {
 	modelRatio, completionRatio, cacheRatio, applied := ResolveTextPricingRatios(
 		"gpt-5.4",

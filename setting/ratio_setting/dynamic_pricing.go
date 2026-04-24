@@ -19,6 +19,37 @@ type InputThresholdPricingRule struct {
 var (
 	longContextDoubleMultiplier    = 2.0
 	textInputThresholdPricingRules = map[string]InputThresholdPricingRule{
+		"gpt-5.5": {
+			Threshold:                  272000,
+			InputPriceMultiplier:       2.0,
+			OutputPriceMultiplier:      1.5,
+			CachedInputPriceMultiplier: &longContextDoubleMultiplier,
+			ModeModelRatioMultiplier: map[string]float64{
+				TextPricingModeStandard: 1.0,
+				TextPricingModeBatch:    0.5,
+				TextPricingModeFlex:     0.5,
+			},
+			LongContextModes: map[string]struct{}{
+				TextPricingModeStandard: {},
+				TextPricingModeBatch:    {},
+				TextPricingModeFlex:     {},
+			},
+		},
+		"gpt-5.5-pro": {
+			Threshold:             272000,
+			InputPriceMultiplier:  2.0,
+			OutputPriceMultiplier: 1.5,
+			ModeModelRatioMultiplier: map[string]float64{
+				TextPricingModeStandard: 1.0,
+				TextPricingModeBatch:    0.5,
+				TextPricingModeFlex:     0.5,
+			},
+			LongContextModes: map[string]struct{}{
+				TextPricingModeStandard: {},
+				TextPricingModeBatch:    {},
+				TextPricingModeFlex:     {},
+			},
+		},
 		"gpt-5.4": {
 			Threshold:                  272000,
 			InputPriceMultiplier:       2.0,

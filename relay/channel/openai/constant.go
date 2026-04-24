@@ -46,6 +46,8 @@ var ModelList = []string{
 	"gpt-5.2-codex",
 	"gpt-5.3-chat-latest",
 	"gpt-5.3-codex",
+	"gpt-5.5",
+	"gpt-5.5-pro",
 	"gpt-5.4", "gpt-5.4-2026-03-05",
 	"gpt-5.4-pro", "gpt-5.4-pro-2026-03-05",
 	"gpt-4o-audio-preview", "gpt-4o-audio-preview-2024-10-01", "gpt-4o-audio-preview-2024-12-17", "gpt-4o-audio-preview-2025-06-03",
