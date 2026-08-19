@@ -111,8 +111,13 @@ func ApplyThinkingConfig(geminiRequest *dto.GeminiChatRequest, info convmeta.Met
 	// 1. Explicit effort is "none" or "off": highest precedence over model name suffixes
 	if normalizedEffort == "none" || normalizedEffort == "off" {
 		if isGem3 {
-			geminiRequest.GenerationConfig.ThinkingConfig = resolveGemini3NoThinkingConfig(modelName)
-			info.SetReasoningEffort("none")
+			// Gemini 3 does not support turning off thinking; fallback to lowest supported level (e.g. "low") with IncludeThoughts=false.
+			// Effective reasoning effort is recorded as the lowest supported level.
+			config, effectiveLevel := resolveGemini3NoThinkingConfig(modelName)
+			if config != nil {
+				geminiRequest.GenerationConfig.ThinkingConfig = config
+				info.SetReasoningEffort(effectiveLevel)
+			}
 		} else if !isNew25Pro {
 			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
 				ThinkingBudget: kitutil.GetPointer(0),
@@ -165,15 +170,17 @@ func ApplyThinkingConfig(geminiRequest *dto.GeminiChatRequest, info convmeta.Met
 				IncludeThoughts: true,
 			}
 		} else if isGem3 {
-			level := "high"
+			level := resolveGemini3ThinkingLevel(modelName, "high")
 			if normalizedEffort != "" {
 				level = resolveGemini3ThinkingLevel(modelName, normalizedEffort)
 			}
-			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
-				IncludeThoughts: true,
-				ThinkingLevel:   level,
+			if level != "" {
+				geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
+					IncludeThoughts: true,
+					ThinkingLevel:   level,
+				}
+				info.SetReasoningEffort(level)
 			}
-			info.SetReasoningEffort(level)
 		} else {
 			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
 				IncludeThoughts: true,
@@ -193,8 +200,11 @@ func ApplyThinkingConfig(geminiRequest *dto.GeminiChatRequest, info convmeta.Met
 	// 4. Model suffix -nothinking
 	if strings.HasSuffix(modelName, "-nothinking") {
 		if isGem3 {
-			geminiRequest.GenerationConfig.ThinkingConfig = resolveGemini3NoThinkingConfig(modelName)
-			info.SetReasoningEffort("none")
+			config, effectiveLevel := resolveGemini3NoThinkingConfig(modelName)
+			if config != nil {
+				geminiRequest.GenerationConfig.ThinkingConfig = config
+				info.SetReasoningEffort(effectiveLevel)
+			}
 		} else if !isNew25Pro {
 			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
 				ThinkingBudget: kitutil.GetPointer(0),
@@ -208,11 +218,13 @@ func ApplyThinkingConfig(geminiRequest *dto.GeminiChatRequest, info convmeta.Met
 	if _, level, ok := reasoning.TrimEffortSuffix(modelName); ok && level != "" {
 		if isGem3 {
 			resolvedLevel := resolveGemini3ThinkingLevel(modelName, level)
-			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
-				IncludeThoughts: true,
-				ThinkingLevel:   resolvedLevel,
+			if resolvedLevel != "" {
+				geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
+					IncludeThoughts: true,
+					ThinkingLevel:   resolvedLevel,
+				}
+				info.SetReasoningEffort(resolvedLevel)
 			}
-			info.SetReasoningEffort(resolvedLevel)
 		} else {
 			// Preserve baseline behavior for Gemini 2.5 suffix models (uses ThinkingLevel)
 			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
@@ -228,11 +240,13 @@ func ApplyThinkingConfig(geminiRequest *dto.GeminiChatRequest, info convmeta.Met
 	if normalizedEffort != "" {
 		if isGem3 {
 			resolvedLevel := resolveGemini3ThinkingLevel(modelName, normalizedEffort)
-			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
-				IncludeThoughts: true,
-				ThinkingLevel:   resolvedLevel,
+			if resolvedLevel != "" {
+				geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
+					IncludeThoughts: true,
+					ThinkingLevel:   resolvedLevel,
+				}
+				info.SetReasoningEffort(resolvedLevel)
 			}
-			info.SetReasoningEffort(resolvedLevel)
 		} else {
 			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
 				IncludeThoughts: true,
@@ -329,60 +343,110 @@ func isGemini3Model(modelName string) bool {
 }
 
 type gemini3Capability struct {
-	allowedLevels []string
-	defaultLevel  string
-	lowestLevel   string
+	supportsThinking bool
+	allowedLevels    []string
+	defaultLevel     string
+	lowestLevel      string
 }
 
-func getGemini3Capability(modelName string) gemini3Capability {
+func getGemini3Capability(modelName string) (gemini3Capability, bool) {
 	base := cleanModelName(modelName)
 	switch {
+	// Gemini 3 Image models (do not support thinking configuration) - check first before prefix matching
+	case strings.Contains(base, "gemini-3-pro-image") || strings.Contains(base, "gemini-3.1-flash-image") || strings.Contains(base, "image"):
+		return gemini3Capability{
+			supportsThinking: false,
+		}, true
+
+	// Gemini 3.7 Flash
 	case strings.Contains(base, "gemini-3.7-flash"):
 		return gemini3Capability{
-			allowedLevels: []string{"low", "medium", "high"},
-			defaultLevel:  "high",
-			lowestLevel:   "low",
-		}
+			supportsThinking: true,
+			allowedLevels:    []string{"low", "medium", "high"},
+			defaultLevel:     "high",
+			lowestLevel:      "low",
+		}, true
+
+	// Gemini 3.1 Pro & Pro Preview
 	case strings.Contains(base, "gemini-3.1-pro"):
 		return gemini3Capability{
-			allowedLevels: []string{"low", "medium", "high"},
-			defaultLevel:  "high",
-			lowestLevel:   "low",
-		}
-	default:
+			supportsThinking: true,
+			allowedLevels:    []string{"low", "medium", "high"},
+			defaultLevel:     "high",
+			lowestLevel:      "low",
+		}, true
+
+	// Gemini 3 Pro Preview
+	case strings.Contains(base, "gemini-3-pro-preview") || strings.Contains(base, "gemini-3-pro"):
 		return gemini3Capability{
-			allowedLevels: []string{"low", "medium", "high"},
-			defaultLevel:  "high",
-			lowestLevel:   "low",
-		}
+			supportsThinking: true,
+			allowedLevels:    []string{"low", "medium", "high"},
+			defaultLevel:     "high",
+			lowestLevel:      "low",
+		}, true
+
+	// Gemini 3 Flash Preview & 3.1 Flash Lite Preview
+	case strings.Contains(base, "gemini-3-flash-preview") || strings.Contains(base, "gemini-3.1-flash-lite-preview") || strings.Contains(base, "gemini-3-flash"):
+		return gemini3Capability{
+			supportsThinking: true,
+			allowedLevels:    []string{"low", "medium", "high"},
+			defaultLevel:     "high",
+			lowestLevel:      "low",
+		}, true
+
+	default:
+		// Unknown Gemini 3 model: do not guess thinking capabilities to prevent 400 Bad Request
+		return gemini3Capability{
+			supportsThinking: false,
+		}, false
 	}
 }
 
 // resolveGemini3ThinkingLevel maps arbitrary input effort/level to a valid Gemini 3 thinking level based on model capabilities.
-// Supported levels for current Gemini 3 models (3.7-flash, 3.1-pro, etc.): "low", "medium", "high".
+// Supported levels for current Gemini 3 models (3.7-flash, 3.1-pro, 3-flash, 3-pro, etc.): "low", "medium", "high".
 // Claude's "xhigh" / "max" are normalized to "high".
-// If "minimal" is requested on models that do not support it, it safely downgrades to lowest supported level ("low").
+// If "minimal" or an unsupported level is requested, it safely fallbacks to the lowest supported level ("low").
 func resolveGemini3ThinkingLevel(modelName string, effort string) string {
 	clean := strings.ToLower(strings.TrimSpace(effort))
-	cap := getGemini3Capability(modelName)
+	cap, ok := getGemini3Capability(modelName)
+	if !ok || !cap.supportsThinking {
+		return ""
+	}
+
+	isAllowed := func(level string) bool {
+		for _, allowed := range cap.allowedLevels {
+			if allowed == level {
+				return true
+			}
+		}
+		return false
+	}
 
 	switch clean {
 	case "xhigh", "max", "high":
-		return "high"
+		if isAllowed("high") {
+			return "high"
+		}
+		return cap.defaultLevel
 	case "medium":
-		return "medium"
+		if isAllowed("medium") {
+			return "medium"
+		}
+		return cap.defaultLevel
 	case "low":
-		return "low"
-	case "minimal":
-		for _, allowed := range cap.allowedLevels {
-			if allowed == "minimal" {
-				return "minimal"
-			}
+		if isAllowed("low") {
+			return "low"
 		}
 		return cap.lowestLevel
-	case "none", "off":
+	case "minimal", "none", "off":
+		if isAllowed("minimal") && clean == "minimal" {
+			return "minimal"
+		}
 		return cap.lowestLevel
 	default:
+		if isAllowed(clean) {
+			return clean
+		}
 		return cap.defaultLevel
 	}
 }
@@ -396,13 +460,17 @@ func budgetToGemini3ThinkingLevel(modelName string, budgetTokens int) string {
 }
 
 // resolveGemini3NoThinkingConfig determines the Gemini 3 config for disabled/none/off/-nothinking requests.
-// Sets thinkingLevel to the lowest supported level (e.g. "low") and includeThoughts to false.
-func resolveGemini3NoThinkingConfig(modelName string) *dto.GeminiThinkingConfig {
-	cap := getGemini3Capability(modelName)
+// Gemini 3 models do not support completely turning off thinking; this performs a lowest-supported-level fallback (e.g. "low")
+// with includeThoughts set to false, and returns the effective thinking level.
+func resolveGemini3NoThinkingConfig(modelName string) (*dto.GeminiThinkingConfig, string) {
+	cap, ok := getGemini3Capability(modelName)
+	if !ok || !cap.supportsThinking {
+		return nil, ""
+	}
 	return &dto.GeminiThinkingConfig{
 		IncludeThoughts: false,
 		ThinkingLevel:   cap.lowestLevel,
-	}
+	}, cap.lowestLevel
 }
 
 func isNew25ProModel(modelName string) bool {

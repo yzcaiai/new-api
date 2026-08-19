@@ -2,6 +2,7 @@ package dto
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -200,6 +201,23 @@ func (c *GeminiThinkingConfig) UnmarshalJSON(data []byte) error {
 
 func (c *GeminiThinkingConfig) SetThinkingBudget(budget int) {
 	c.ThinkingBudget = &budget
+}
+
+// Validate verifies that thinkingBudget and thinkingLevel are not both specified,
+// and that thinkingConfig parameters are valid.
+func (c *GeminiThinkingConfig) Validate() error {
+	if c == nil {
+		return nil
+	}
+	hasBudget := c.ThinkingBudget != nil
+	hasLevel := c.ThinkingLevel != ""
+	if hasBudget && hasLevel {
+		return errors.New("thinkingConfig cannot contain both thinkingBudget and thinkingLevel")
+	}
+	if hasBudget && *c.ThinkingBudget < 0 {
+		return errors.New("thinkingBudget cannot be negative")
+	}
+	return nil
 }
 
 type GeminiInlineData struct {

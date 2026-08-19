@@ -8,20 +8,12 @@ import (
 )
 
 // ValidateThinkingConfig verifies that thinkingBudget and thinkingLevel are not both specified,
-// and that thinkingConfig parameters are valid.
+// and that thinkingConfig parameters are valid by calling the dto method.
 func ValidateThinkingConfig(tc *dto.GeminiThinkingConfig) error {
 	if tc == nil {
 		return nil
 	}
-	hasBudget := tc.ThinkingBudget != nil
-	hasLevel := tc.ThinkingLevel != ""
-	if hasBudget && hasLevel {
-		return errors.New("thinking_config cannot contain both thinking_budget and thinking_level")
-	}
-	if hasBudget && *tc.ThinkingBudget < 0 {
-		return errors.New("thinking_budget cannot be negative")
-	}
-	return nil
+	return tc.Validate()
 }
 
 // ValidateRawGoogleThinkingConfig validates the raw map parsed from extra_body.google.thinking_config.

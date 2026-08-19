@@ -381,12 +381,8 @@ func GetAndValidateGeminiRequest(c *gin.Context) (*dto.GeminiChatRequest, error)
 	}
 
 	if request.GenerationConfig.ThinkingConfig != nil {
-		tc := request.GenerationConfig.ThinkingConfig
-		if tc.ThinkingBudget != nil && tc.ThinkingLevel != "" {
-			return nil, errors.New("thinkingConfig cannot contain both thinkingBudget and thinkingLevel")
-		}
-		if tc.ThinkingBudget != nil && *tc.ThinkingBudget < 0 {
-			return nil, errors.New("thinkingBudget cannot be negative")
+		if err := request.GenerationConfig.ThinkingConfig.Validate(); err != nil {
+			return nil, err
 		}
 	}
 

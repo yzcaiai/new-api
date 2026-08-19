@@ -20,13 +20,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func isNoThinkingRequest(req *dto.GeminiChatRequest) bool {
-	if req.GenerationConfig.ThinkingConfig != nil {
-		tc := req.GenerationConfig.ThinkingConfig
-		if tc.ThinkingBudget != nil && *tc.ThinkingBudget == 0 {
-			// 如果思考预算明确为 0，则认为是非思考请求 (Gemini 2.5 禁用思考)
-			return true
-		}
+func isNoThinkingRequest(modelName string, req *dto.GeminiChatRequest) bool {
+	if req == nil || req.GenerationConfig.ThinkingConfig == nil {
+		return false
+	}
+	base := strings.ToLower(modelName)
+	// Gemini 3 models do not support thinkingBudget=0 to disable thinking.
+	// Only Gemini 2.5 models support thinkingBudget=0 for -nothinking billing/routing.
+	if strings.Contains(base, "gemini-3") || strings.Contains(base, "gemini-3.") {
+		return false
+	}
+	tc := req.GenerationConfig.ThinkingConfig
+	if tc.ThinkingBudget != nil && *tc.ThinkingBudget == 0 {
+		// 如果思考预算明确为 0，则认为是非思考请求 (Gemini 2.5 禁用思考)
+		return true
 	}
 	return false
 }
@@ -71,7 +78,11 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 	}
 
 	if model_setting.GetGeminiSettings().ThinkingAdapterEnabled {
-		if isNoThinkingRequest(request) {
+		targetModel := info.UpstreamModelName
+		if targetModel == "" {
+			targetModel = info.OriginModelName
+		}
+		if isNoThinkingRequest(targetModel, request) {
 			// check is thinking
 			if !strings.Contains(info.OriginModelName, "-nothinking") {
 				// try to get no thinking model price
