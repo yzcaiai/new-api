@@ -88,9 +88,22 @@ func ApplyThinkingConfig(geminiRequest *dto.GeminiChatRequest, info convmeta.Met
 	}
 
 	modelName := convmeta.UpstreamModelName(info)
-	isNew25Pro := strings.HasPrefix(modelName, "gemini-2.5-pro") &&
-		!strings.HasPrefix(modelName, "gemini-2.5-pro-preview-05-06") &&
-		!strings.HasPrefix(modelName, "gemini-2.5-pro-preview-03-25")
+	if modelName == "" {
+		if len(oaiRequest) > 0 && oaiRequest[0].Model != "" {
+			modelName = oaiRequest[0].Model
+		} else {
+			modelName = info.GetOriginModelName()
+		}
+	}
+	isNew25Pro := isNew25ProModel(modelName)
+	isGem3 := isGemini3Model(modelName)
+
+	var reqEffort string
+	if len(oaiRequest) > 0 && oaiRequest[0].ReasoningEffort != "" {
+		reqEffort = oaiRequest[0].ReasoningEffort
+	} else if info != nil && info.GetReasoningEffort() != "" {
+		reqEffort = info.GetReasoningEffort()
+	}
 
 	if strings.Contains(modelName, "-thinking-") {
 		parts := strings.SplitN(modelName, "-thinking-", 2)
@@ -120,6 +133,16 @@ func ApplyThinkingConfig(geminiRequest *dto.GeminiChatRequest, info convmeta.Met
 			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
 				IncludeThoughts: true,
 			}
+		} else if isGem3 {
+			level := "high"
+			if reqEffort != "" {
+				level = reqEffort
+			}
+			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
+				IncludeThoughts: true,
+				ThinkingLevel:   level,
+			}
+			info.SetReasoningEffort(level)
 		} else {
 			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
 				IncludeThoughts: true,
@@ -128,22 +151,60 @@ func ApplyThinkingConfig(geminiRequest *dto.GeminiChatRequest, info convmeta.Met
 				budgetTokens := opts.Gemini.ThinkingAdapterBudgetTokensPercentage * float64(*geminiRequest.GenerationConfig.MaxOutputTokens)
 				clampedBudget := clampThinkingBudget(modelName, int(budgetTokens))
 				geminiRequest.GenerationConfig.ThinkingConfig.ThinkingBudget = kitutil.GetPointer(clampedBudget)
-			} else if len(oaiRequest) > 0 {
-				geminiRequest.GenerationConfig.ThinkingConfig.ThinkingBudget = kitutil.GetPointer(clampThinkingBudgetByEffort(modelName, oaiRequest[0].ReasoningEffort))
+			} else if reqEffort != "" {
+				geminiRequest.GenerationConfig.ThinkingConfig.ThinkingBudget = kitutil.GetPointer(clampThinkingBudgetByEffort(modelName, reqEffort))
+				info.SetReasoningEffort(reqEffort)
 			}
 		}
 	} else if strings.HasSuffix(modelName, "-nothinking") {
-		if !isNew25Pro {
+		if isGem3 {
+			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
+				IncludeThoughts: false,
+				ThinkingBudget:  kitutil.GetPointer(0),
+			}
+		} else if !isNew25Pro {
 			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
 				ThinkingBudget: kitutil.GetPointer(0),
 			}
 		}
 	} else if _, level, ok := reasoning.TrimEffortSuffix(modelName); ok && level != "" {
-		geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
-			IncludeThoughts: true,
-			ThinkingLevel:   level,
+		if isGem3 {
+			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
+				IncludeThoughts: true,
+				ThinkingLevel:   level,
+			}
+		} else {
+			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
+				IncludeThoughts: true,
+				ThinkingBudget:  kitutil.GetPointer(clampThinkingBudgetByEffort(modelName, level)),
+			}
 		}
 		info.SetReasoningEffort(level)
+	} else if reqEffort != "" {
+		if reqEffort == "none" || reqEffort == "off" {
+			if isGem3 {
+				geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
+					IncludeThoughts: false,
+					ThinkingBudget:  kitutil.GetPointer(0),
+				}
+			} else if !isNew25Pro {
+				geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
+					ThinkingBudget: kitutil.GetPointer(0),
+				}
+			}
+		} else if isGem3 {
+			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
+				IncludeThoughts: true,
+				ThinkingLevel:   reqEffort,
+			}
+			info.SetReasoningEffort(reqEffort)
+		} else {
+			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
+				IncludeThoughts: true,
+				ThinkingBudget:  kitutil.GetPointer(clampThinkingBudgetByEffort(modelName, reqEffort)),
+			}
+			info.SetReasoningEffort(reqEffort)
+		}
 	}
 }
 
@@ -199,6 +260,15 @@ func SupportedMimeTypesList() []string {
 		keys = append(keys, key)
 	}
 	return keys
+}
+
+func isGemini3Model(modelName string) bool {
+	lower := strings.ToLower(modelName)
+	return strings.Contains(lower, "gemini-3") ||
+		strings.Contains(lower, "gemini-3.0") ||
+		strings.Contains(lower, "gemini-3.1") ||
+		strings.Contains(lower, "gemini-3.5") ||
+		strings.Contains(lower, "gemini-3.7")
 }
 
 func isNew25ProModel(modelName string) bool {
