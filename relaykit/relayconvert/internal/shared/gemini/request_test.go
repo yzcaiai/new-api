@@ -220,7 +220,7 @@ func TestApplyThinkingConfig_Gemini3And25(t *testing.T) {
 		assert.Equal(t, "low", meta.GetReasoningEffort())
 	})
 
-	t.Run("profile coverage: gemini-3-pro-preview supports thinking", func(t *testing.T) {
+	t.Run("profile coverage: gemini-3-pro-preview only supports low/high (medium safely fallbacks to default high)", func(t *testing.T) {
 		meta := &convmeta.Values{
 			UpstreamModelName: "gemini-3-pro-preview",
 			Options: &convmeta.Options{
@@ -240,9 +240,136 @@ func TestApplyThinkingConfig_Gemini3And25(t *testing.T) {
 		gemini.ApplyThinkingConfig(geminiReq, meta, oaiReq)
 		require.NotNil(t, geminiReq.GenerationConfig.ThinkingConfig)
 		assert.True(t, geminiReq.GenerationConfig.ThinkingConfig.IncludeThoughts)
+		// gemini-3-pro-preview only supports low/high; medium falls back to default high
+		assert.Equal(t, "high", geminiReq.GenerationConfig.ThinkingConfig.ThinkingLevel)
+		assert.Nil(t, geminiReq.GenerationConfig.ThinkingConfig.ThinkingBudget)
+		assert.Equal(t, "high", meta.GetReasoningEffort())
+	})
+
+	t.Run("profile coverage: gemini-3-pro-preview with low effort resolves to low", func(t *testing.T) {
+		meta := &convmeta.Values{
+			UpstreamModelName: "gemini-3-pro-preview",
+			Options: &convmeta.Options{
+				Gemini: convmeta.GeminiOptions{
+					ThinkingAdapterEnabled: true,
+				},
+			},
+		}
+		geminiReq := &dto.GeminiChatRequest{
+			GenerationConfig: dto.GeminiChatGenerationConfig{},
+		}
+		oaiReq := dto.GeneralOpenAIRequest{
+			Model:           "gemini-3-pro-preview",
+			ReasoningEffort: "low",
+		}
+
+		gemini.ApplyThinkingConfig(geminiReq, meta, oaiReq)
+		require.NotNil(t, geminiReq.GenerationConfig.ThinkingConfig)
+		assert.True(t, geminiReq.GenerationConfig.ThinkingConfig.IncludeThoughts)
+		assert.Equal(t, "low", geminiReq.GenerationConfig.ThinkingConfig.ThinkingLevel)
+		assert.Nil(t, geminiReq.GenerationConfig.ThinkingConfig.ThinkingBudget)
+		assert.Equal(t, "low", meta.GetReasoningEffort())
+	})
+
+	t.Run("profile coverage: gemini-3.1-flash-lite-preview supports low/medium/high", func(t *testing.T) {
+		meta := &convmeta.Values{
+			UpstreamModelName: "gemini-3.1-flash-lite-preview",
+			Options: &convmeta.Options{
+				Gemini: convmeta.GeminiOptions{
+					ThinkingAdapterEnabled: true,
+				},
+			},
+		}
+		geminiReq := &dto.GeminiChatRequest{
+			GenerationConfig: dto.GeminiChatGenerationConfig{},
+		}
+		oaiReq := dto.GeneralOpenAIRequest{
+			Model:           "gemini-3.1-flash-lite-preview",
+			ReasoningEffort: "medium",
+		}
+
+		gemini.ApplyThinkingConfig(geminiReq, meta, oaiReq)
+		require.NotNil(t, geminiReq.GenerationConfig.ThinkingConfig)
+		assert.True(t, geminiReq.GenerationConfig.ThinkingConfig.IncludeThoughts)
 		assert.Equal(t, "medium", geminiReq.GenerationConfig.ThinkingConfig.ThinkingLevel)
 		assert.Nil(t, geminiReq.GenerationConfig.ThinkingConfig.ThinkingBudget)
 		assert.Equal(t, "medium", meta.GetReasoningEffort())
+	})
+
+	t.Run("profile coverage: gemini-3.1-flash-image does not inject thinking config", func(t *testing.T) {
+		meta := &convmeta.Values{
+			UpstreamModelName: "gemini-3.1-flash-image-preview",
+			Options: &convmeta.Options{
+				Gemini: convmeta.GeminiOptions{
+					ThinkingAdapterEnabled: true,
+				},
+			},
+		}
+		geminiReq := &dto.GeminiChatRequest{
+			GenerationConfig: dto.GeminiChatGenerationConfig{},
+		}
+		oaiReq := dto.GeneralOpenAIRequest{
+			Model:           "gemini-3.1-flash-image-preview",
+			ReasoningEffort: "high",
+		}
+
+		gemini.ApplyThinkingConfig(geminiReq, meta, oaiReq)
+		assert.Nil(t, geminiReq.GenerationConfig.ThinkingConfig)
+	})
+
+	t.Run("profile coverage: gemini-3-pro-image with -thinking-2048 does not inject thinking config", func(t *testing.T) {
+		meta := &convmeta.Values{
+			UpstreamModelName: "gemini-3-pro-image-thinking-2048",
+			Options: &convmeta.Options{
+				Gemini: convmeta.GeminiOptions{
+					ThinkingAdapterEnabled: true,
+				},
+			},
+		}
+		geminiReq := &dto.GeminiChatRequest{
+			GenerationConfig: dto.GeminiChatGenerationConfig{},
+		}
+
+		gemini.ApplyThinkingConfig(geminiReq, meta)
+		assert.Nil(t, geminiReq.GenerationConfig.ThinkingConfig)
+	})
+
+	t.Run("profile coverage: gemini-3-future-unknown with -thinking-2048 does not inject thinking config", func(t *testing.T) {
+		meta := &convmeta.Values{
+			UpstreamModelName: "gemini-3-future-unknown-variant-thinking-2048",
+			Options: &convmeta.Options{
+				Gemini: convmeta.GeminiOptions{
+					ThinkingAdapterEnabled: true,
+				},
+			},
+		}
+		geminiReq := &dto.GeminiChatRequest{
+			GenerationConfig: dto.GeminiChatGenerationConfig{},
+		}
+
+		gemini.ApplyThinkingConfig(geminiReq, meta)
+		assert.Nil(t, geminiReq.GenerationConfig.ThinkingConfig)
+	})
+
+	t.Run("profile coverage: gemini-3-pro-future-unknown does not match gemini-3-pro-preview and does not inject", func(t *testing.T) {
+		meta := &convmeta.Values{
+			UpstreamModelName: "gemini-3-pro-future-unknown",
+			Options: &convmeta.Options{
+				Gemini: convmeta.GeminiOptions{
+					ThinkingAdapterEnabled: true,
+				},
+			},
+		}
+		geminiReq := &dto.GeminiChatRequest{
+			GenerationConfig: dto.GeminiChatGenerationConfig{},
+		}
+		oaiReq := dto.GeneralOpenAIRequest{
+			Model:           "gemini-3-pro-future-unknown",
+			ReasoningEffort: "high",
+		}
+
+		gemini.ApplyThinkingConfig(geminiReq, meta, oaiReq)
+		assert.Nil(t, geminiReq.GenerationConfig.ThinkingConfig)
 	})
 
 	t.Run("profile coverage: gemini-3-flash-preview supports thinking", func(t *testing.T) {

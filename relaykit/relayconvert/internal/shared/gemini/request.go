@@ -134,11 +134,13 @@ func ApplyThinkingConfig(geminiRequest *dto.GeminiChatRequest, info convmeta.Met
 			if budgetTokens, err := strconv.Atoi(parts[1]); err == nil {
 				if isGem3 {
 					level := budgetToGemini3ThinkingLevel(modelName, budgetTokens)
-					geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
-						IncludeThoughts: true,
-						ThinkingLevel:   level,
+					if level != "" {
+						geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
+							IncludeThoughts: true,
+							ThinkingLevel:   level,
+						}
+						info.SetReasoningEffort(level)
 					}
-					info.SetReasoningEffort(level)
 				} else {
 					clampedBudget := clampThinkingBudget(modelName, budgetTokens)
 					geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
@@ -352,14 +354,16 @@ type gemini3Capability struct {
 func getGemini3Capability(modelName string) (gemini3Capability, bool) {
 	base := cleanModelName(modelName)
 	switch {
-	// Gemini 3 Image models (do not support thinking configuration) - check first before prefix matching
-	case strings.Contains(base, "gemini-3-pro-image") || strings.Contains(base, "gemini-3.1-flash-image") || strings.Contains(base, "image"):
+	// Gemini 3 Image models (do not support thinking configuration)
+	case base == "gemini-3-pro-image" || base == "gemini-3.1-flash-image" ||
+		strings.HasPrefix(base, "gemini-3-pro-image-") || strings.HasPrefix(base, "gemini-3.1-flash-image-") ||
+		strings.Contains(base, "image"):
 		return gemini3Capability{
 			supportsThinking: false,
 		}, true
 
 	// Gemini 3.7 Flash
-	case strings.Contains(base, "gemini-3.7-flash"):
+	case base == "gemini-3.7-flash" || strings.HasPrefix(base, "gemini-3.7-flash-"):
 		return gemini3Capability{
 			supportsThinking: true,
 			allowedLevels:    []string{"low", "medium", "high"},
@@ -367,8 +371,9 @@ func getGemini3Capability(modelName string) (gemini3Capability, bool) {
 			lowestLevel:      "low",
 		}, true
 
-	// Gemini 3.1 Pro & Pro Preview
-	case strings.Contains(base, "gemini-3.1-pro"):
+	// Gemini 3.1 Pro & Pro Preview & CustomTools
+	case base == "gemini-3.1-pro" || base == "gemini-3.1-pro-preview" ||
+		strings.HasPrefix(base, "gemini-3.1-pro-") || strings.HasPrefix(base, "gemini-3.1-pro-preview-"):
 		return gemini3Capability{
 			supportsThinking: true,
 			allowedLevels:    []string{"low", "medium", "high"},
@@ -376,8 +381,17 @@ func getGemini3Capability(modelName string) (gemini3Capability, bool) {
 			lowestLevel:      "low",
 		}, true
 
-	// Gemini 3 Pro Preview
-	case strings.Contains(base, "gemini-3-pro-preview") || strings.Contains(base, "gemini-3-pro"):
+	// Gemini 3 Pro Preview (Official capability only allows "low" and "high"; medium is not supported)
+	case base == "gemini-3-pro-preview" || strings.HasPrefix(base, "gemini-3-pro-preview-"):
+		return gemini3Capability{
+			supportsThinking: true,
+			allowedLevels:    []string{"low", "high"},
+			defaultLevel:     "high",
+			lowestLevel:      "low",
+		}, true
+
+	// Gemini 3 Flash Preview
+	case base == "gemini-3-flash-preview" || strings.HasPrefix(base, "gemini-3-flash-preview-"):
 		return gemini3Capability{
 			supportsThinking: true,
 			allowedLevels:    []string{"low", "medium", "high"},
@@ -385,8 +399,8 @@ func getGemini3Capability(modelName string) (gemini3Capability, bool) {
 			lowestLevel:      "low",
 		}, true
 
-	// Gemini 3 Flash Preview & 3.1 Flash Lite Preview
-	case strings.Contains(base, "gemini-3-flash-preview") || strings.Contains(base, "gemini-3.1-flash-lite-preview") || strings.Contains(base, "gemini-3-flash"):
+	// Gemini 3.1 Flash Lite Preview
+	case base == "gemini-3.1-flash-lite-preview" || strings.HasPrefix(base, "gemini-3.1-flash-lite-preview-"):
 		return gemini3Capability{
 			supportsThinking: true,
 			allowedLevels:    []string{"low", "medium", "high"},
@@ -395,7 +409,7 @@ func getGemini3Capability(modelName string) (gemini3Capability, bool) {
 		}, true
 
 	default:
-		// Unknown Gemini 3 model: do not guess thinking capabilities to prevent 400 Bad Request
+		// Unknown Gemini 3 model (including future unknown variants): do not guess thinking capabilities
 		return gemini3Capability{
 			supportsThinking: false,
 		}, false

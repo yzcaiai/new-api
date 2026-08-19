@@ -24,10 +24,16 @@ func isNoThinkingRequest(modelName string, req *dto.GeminiChatRequest) bool {
 	if req == nil || req.GenerationConfig.ThinkingConfig == nil {
 		return false
 	}
-	base := strings.ToLower(modelName)
-	// Gemini 3 models do not support thinkingBudget=0 to disable thinking.
-	// Only Gemini 2.5 models support thinkingBudget=0 for -nothinking billing/routing.
-	if strings.Contains(base, "gemini-3") || strings.Contains(base, "gemini-3.") {
+	base := strings.ToLower(strings.TrimSpace(modelName))
+	if idx := strings.Index(base, ":"); idx != -1 {
+		base = base[:idx]
+	}
+	if idx := strings.LastIndex(base, "/"); idx != -1 {
+		base = base[idx+1:]
+	}
+	// Strictly restricted to normalized gemini-2.5-* models.
+	// gemini-2.0, gemini-1.x, unknown models, and all Gemini 3 models must return false.
+	if !strings.HasPrefix(base, "gemini-2.5-") {
 		return false
 	}
 	tc := req.GenerationConfig.ThinkingConfig
