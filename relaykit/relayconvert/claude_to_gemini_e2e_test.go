@@ -18,7 +18,8 @@ func TestClaudeToOpenAIToGeminiE2EChain(t *testing.T) {
 
 	t.Run("Claude adaptive with effort xhigh converts through OpenAI to Gemini 3.1 Pro wire JSON", func(t *testing.T) {
 		meta := &convmeta.Values{
-			UpstreamModelName: "gemini-3.1-pro-preview",
+			UpstreamModelName:   "gemini-3.1-pro-preview",
+			ChannelMetaAttached: true,
 			Options: &convmeta.Options{
 				Gemini: convmeta.GeminiOptions{
 					ThinkingAdapterEnabled: true,
@@ -62,9 +63,10 @@ func TestClaudeToOpenAIToGeminiE2EChain(t *testing.T) {
 		assert.NotContains(t, wireJSON, "thinkingBudget")
 	})
 
-	t.Run("Claude thinking disabled converts through OpenAI to Gemini 3.1 Pro wire JSON as minimal without budget", func(t *testing.T) {
+	t.Run("Claude thinking disabled converts through OpenAI to Gemini 3.1 Pro wire JSON as low without budget", func(t *testing.T) {
 		meta := &convmeta.Values{
-			UpstreamModelName: "gemini-3.1-pro-preview",
+			UpstreamModelName:   "gemini-3.1-pro-preview",
+			ChannelMetaAttached: true,
 			Options: &convmeta.Options{
 				Gemini: convmeta.GeminiOptions{
 					ThinkingAdapterEnabled: true,
@@ -93,23 +95,24 @@ func TestClaudeToOpenAIToGeminiE2EChain(t *testing.T) {
 		geminiReq, ok := geminiResult.Value.(*dto.GeminiChatRequest)
 		require.True(t, ok)
 
-		// Assert struct fields
+		// Assert struct fields: Gemini 3.1 Pro lowest level is "low"
 		require.NotNil(t, geminiReq.GenerationConfig.ThinkingConfig)
 		assert.False(t, geminiReq.GenerationConfig.ThinkingConfig.IncludeThoughts)
-		assert.Equal(t, "minimal", geminiReq.GenerationConfig.ThinkingConfig.ThinkingLevel)
+		assert.Equal(t, "low", geminiReq.GenerationConfig.ThinkingConfig.ThinkingLevel)
 		assert.Nil(t, geminiReq.GenerationConfig.ThinkingConfig.ThinkingBudget)
 
 		// Assert Wire JSON
 		wireBytes, err := json.Marshal(geminiReq)
 		require.NoError(t, err)
 		wireJSON := string(wireBytes)
-		assert.Contains(t, wireJSON, `"thinkingLevel":"minimal"`)
+		assert.Contains(t, wireJSON, `"thinkingLevel":"low"`)
 		assert.NotContains(t, wireJSON, "thinkingBudget")
 	})
 
 	t.Run("Claude thinking disabled converts through OpenAI to Gemini 3.7 Flash as low without budget", func(t *testing.T) {
 		meta := &convmeta.Values{
-			UpstreamModelName: "gemini-3.7-flash",
+			UpstreamModelName:   "gemini-3.7-flash",
+			ChannelMetaAttached: true,
 			Options: &convmeta.Options{
 				Gemini: convmeta.GeminiOptions{
 					ThinkingAdapterEnabled: true,

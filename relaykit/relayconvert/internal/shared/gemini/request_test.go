@@ -61,6 +61,30 @@ func TestApplyThinkingConfig_Gemini3And25(t *testing.T) {
 		assert.Equal(t, "high", meta.GetReasoningEffort())
 	})
 
+	t.Run("gemini-3.1-pro with minimal downgrades to low", func(t *testing.T) {
+		meta := &convmeta.Values{
+			UpstreamModelName: "gemini-3.1-pro-preview",
+			Options: &convmeta.Options{
+				Gemini: convmeta.GeminiOptions{
+					ThinkingAdapterEnabled: true,
+				},
+			},
+		}
+		geminiReq := &dto.GeminiChatRequest{
+			GenerationConfig: dto.GeminiChatGenerationConfig{},
+		}
+		oaiReq := dto.GeneralOpenAIRequest{
+			Model:           "gemini-3.1-pro-preview",
+			ReasoningEffort: "minimal",
+		}
+
+		gemini.ApplyThinkingConfig(geminiReq, meta, oaiReq)
+		require.NotNil(t, geminiReq.GenerationConfig.ThinkingConfig)
+		assert.True(t, geminiReq.GenerationConfig.ThinkingConfig.IncludeThoughts)
+		assert.Equal(t, "low", geminiReq.GenerationConfig.ThinkingConfig.ThinkingLevel)
+		assert.Nil(t, geminiReq.GenerationConfig.ThinkingConfig.ThinkingBudget)
+	})
+
 	t.Run("gemini-3.7-flash with minimal downgrades to low", func(t *testing.T) {
 		meta := &convmeta.Values{
 			UpstreamModelName: "gemini-3.7-flash",
@@ -125,7 +149,7 @@ func TestApplyThinkingConfig_Gemini3And25(t *testing.T) {
 		assert.Nil(t, geminiReq.GenerationConfig.ThinkingConfig.ThinkingBudget)
 	})
 
-	t.Run("gemini-3 -nothinking sets no thinking without budget", func(t *testing.T) {
+	t.Run("gemini-3 -nothinking sets low level without includeThoughts and without budget", func(t *testing.T) {
 		meta := &convmeta.Values{
 			UpstreamModelName: "gemini-3.1-pro-preview-nothinking",
 			Options: &convmeta.Options{
@@ -141,11 +165,11 @@ func TestApplyThinkingConfig_Gemini3And25(t *testing.T) {
 		gemini.ApplyThinkingConfig(geminiReq, meta)
 		require.NotNil(t, geminiReq.GenerationConfig.ThinkingConfig)
 		assert.False(t, geminiReq.GenerationConfig.ThinkingConfig.IncludeThoughts)
-		assert.Equal(t, "minimal", geminiReq.GenerationConfig.ThinkingConfig.ThinkingLevel)
+		assert.Equal(t, "low", geminiReq.GenerationConfig.ThinkingConfig.ThinkingLevel)
 		assert.Nil(t, geminiReq.GenerationConfig.ThinkingConfig.ThinkingBudget)
 	})
 
-	t.Run("gemini-3.1-pro with effort none disables thinking using minimal level", func(t *testing.T) {
+	t.Run("gemini-3.1-pro with effort none/off (with whitespace & case) disables thinking using low level", func(t *testing.T) {
 		meta := &convmeta.Values{
 			UpstreamModelName: "gemini-3.1-pro-preview",
 			Options: &convmeta.Options{
@@ -159,13 +183,37 @@ func TestApplyThinkingConfig_Gemini3And25(t *testing.T) {
 		}
 		oaiReq := dto.GeneralOpenAIRequest{
 			Model:           "gemini-3.1-pro-preview",
-			ReasoningEffort: "none",
+			ReasoningEffort: " NONE ",
 		}
 
 		gemini.ApplyThinkingConfig(geminiReq, meta, oaiReq)
 		require.NotNil(t, geminiReq.GenerationConfig.ThinkingConfig)
 		assert.False(t, geminiReq.GenerationConfig.ThinkingConfig.IncludeThoughts)
-		assert.Equal(t, "minimal", geminiReq.GenerationConfig.ThinkingConfig.ThinkingLevel)
+		assert.Equal(t, "low", geminiReq.GenerationConfig.ThinkingConfig.ThinkingLevel)
+		assert.Nil(t, geminiReq.GenerationConfig.ThinkingConfig.ThinkingBudget)
+	})
+
+	t.Run("explicit effort none overrides -thinking suffix", func(t *testing.T) {
+		meta := &convmeta.Values{
+			UpstreamModelName: "gemini-3.7-flash-thinking",
+			Options: &convmeta.Options{
+				Gemini: convmeta.GeminiOptions{
+					ThinkingAdapterEnabled: true,
+				},
+			},
+		}
+		geminiReq := &dto.GeminiChatRequest{
+			GenerationConfig: dto.GeminiChatGenerationConfig{},
+		}
+		oaiReq := dto.GeneralOpenAIRequest{
+			Model:           "gemini-3.7-flash-thinking",
+			ReasoningEffort: "off",
+		}
+
+		gemini.ApplyThinkingConfig(geminiReq, meta, oaiReq)
+		require.NotNil(t, geminiReq.GenerationConfig.ThinkingConfig)
+		assert.False(t, geminiReq.GenerationConfig.ThinkingConfig.IncludeThoughts)
+		assert.Equal(t, "low", geminiReq.GenerationConfig.ThinkingConfig.ThinkingLevel)
 		assert.Nil(t, geminiReq.GenerationConfig.ThinkingConfig.ThinkingBudget)
 	})
 

@@ -1,11 +1,11 @@
 package oaichat
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 
-	"context"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
 	relaymedia "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/media"
@@ -50,7 +50,7 @@ func OpenAIChatRequestToGeminiGenerateContent(c context.Context, textRequest dto
 		geminiRequest.GenerationConfig.StopSequences = stopSequences
 	}
 
-	adaptorWithExtraBody := false
+	hasExplicitThinkingInExtraBody := false
 	if len(textRequest.ExtraBody) > 0 {
 		var extraBody map[string]interface{}
 		if err := kitutil.Unmarshal(textRequest.ExtraBody, &extraBody); err != nil {
@@ -59,67 +59,26 @@ func OpenAIChatRequestToGeminiGenerateContent(c context.Context, textRequest dto
 
 		if googleBody, ok := extraBody["google"].(map[string]interface{}); ok {
 			if !strings.HasSuffix(upstreamModelName, "-nothinking") {
-				adaptorWithExtraBody = true
 				if _, hasErrorParam := googleBody["thinkingConfig"]; hasErrorParam {
 					return nil, errors.New("extra_body.google.thinkingConfig is not supported, use extra_body.google.thinking_config instead")
 				}
 
-					if thinkingConfig, ok := googleBody["thinking_config"].(map[string]interface{}); ok {
-						if _, hasErrorParam := thinkingConfig["thinkingBudget"]; hasErrorParam {
-							return nil, errors.New("extra_body.google.thinking_config.thinkingBudget is not supported, use extra_body.google.thinking_config.thinking_budget instead")
-						}
-						if _, hasErrorParam := thinkingConfig["thinkingLevel"]; hasErrorParam {
-							return nil, errors.New("extra_body.google.thinking_config.thinkingLevel is not supported, use extra_body.google.thinking_config.thinking_level instead")
-						}
-
-						_, hasBudget := thinkingConfig["thinking_budget"]
-						_, hasLevel := thinkingConfig["thinking_level"]
-						if hasBudget && hasLevel {
-							return nil, errors.New("extra_body.google.thinking_config cannot contain both thinking_budget and thinking_level")
-						}
-
-						var hasThinkingConfig bool
-						var tempThinkingConfig dto.GeminiThinkingConfig
-
-					if thinkingBudget, exists := thinkingConfig["thinking_budget"]; exists {
-						switch v := thinkingBudget.(type) {
-						case float64:
-							budgetInt := int(v)
-							tempThinkingConfig.ThinkingBudget = kitutil.GetPointer(budgetInt)
-							tempThinkingConfig.IncludeThoughts = budgetInt > 0
-							hasThinkingConfig = true
-						default:
-							return nil, errors.New("extra_body.google.thinking_config.thinking_budget must be an integer")
-						}
+				if rawThinkingConfig, ok := googleBody["thinking_config"].(map[string]interface{}); ok {
+					parsedTC, err := sharedgemini.ValidateRawGoogleThinkingConfig(rawThinkingConfig)
+					if err != nil {
+						return nil, err
 					}
-
-					if includeThoughts, exists := thinkingConfig["include_thoughts"]; exists {
-						if v, ok := includeThoughts.(bool); ok {
-							tempThinkingConfig.IncludeThoughts = v
-							hasThinkingConfig = true
-						} else {
-							return nil, errors.New("extra_body.google.thinking_config.include_thoughts must be a boolean")
-						}
-					}
-					if thinkingLevel, exists := thinkingConfig["thinking_level"]; exists {
-						if v, ok := thinkingLevel.(string); ok {
-							tempThinkingConfig.ThinkingLevel = v
-							hasThinkingConfig = true
-						} else {
-							return nil, errors.New("extra_body.google.thinking_config.thinking_level must be a string")
-						}
-					}
-
-					if hasThinkingConfig {
+					if parsedTC != nil {
+						hasExplicitThinkingInExtraBody = true
 						if geminiRequest.GenerationConfig.ThinkingConfig == nil {
-							geminiRequest.GenerationConfig.ThinkingConfig = &tempThinkingConfig
+							geminiRequest.GenerationConfig.ThinkingConfig = parsedTC
 						} else {
-							if tempThinkingConfig.ThinkingBudget != nil {
-								geminiRequest.GenerationConfig.ThinkingConfig.ThinkingBudget = tempThinkingConfig.ThinkingBudget
+							if parsedTC.ThinkingBudget != nil {
+								geminiRequest.GenerationConfig.ThinkingConfig.ThinkingBudget = parsedTC.ThinkingBudget
 							}
-							geminiRequest.GenerationConfig.ThinkingConfig.IncludeThoughts = tempThinkingConfig.IncludeThoughts
-							if tempThinkingConfig.ThinkingLevel != "" {
-								geminiRequest.GenerationConfig.ThinkingConfig.ThinkingLevel = tempThinkingConfig.ThinkingLevel
+							geminiRequest.GenerationConfig.ThinkingConfig.IncludeThoughts = parsedTC.IncludeThoughts
+							if parsedTC.ThinkingLevel != "" {
+								geminiRequest.GenerationConfig.ThinkingConfig.ThinkingLevel = parsedTC.ThinkingLevel
 							}
 						}
 					}
@@ -157,7 +116,7 @@ func OpenAIChatRequestToGeminiGenerateContent(c context.Context, textRequest dto
 		}
 	}
 
-	if !adaptorWithExtraBody {
+	if !hasExplicitThinkingInExtraBody {
 		sharedgemini.ApplyThinkingConfig(&geminiRequest, info, textRequest)
 	}
 

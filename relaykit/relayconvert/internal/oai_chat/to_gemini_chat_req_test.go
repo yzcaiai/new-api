@@ -42,6 +42,32 @@ func TestOpenAIChatRequestToGeminiGenerateContent_ThinkingConfigValidation(t *te
 		assert.Contains(t, err.Error(), "cannot contain both thinking_budget and thinking_level")
 	})
 
+	t.Run("rejects non-integer float thinking_budget in extra_body", func(t *testing.T) {
+		extraBody := map[string]interface{}{
+			"google": map[string]interface{}{
+				"thinking_config": map[string]interface{}{
+					"thinking_budget": 2048.5,
+				},
+			},
+		}
+		extraBodyBytes, _ := json.Marshal(extraBody)
+
+		req := dto.GeneralOpenAIRequest{
+			Model:     "gemini-2.5-pro",
+			ExtraBody: extraBodyBytes,
+			Messages: []dto.Message{
+				{Role: "user", Content: "hello"},
+			},
+		}
+		meta := &convmeta.Values{
+			Options: &convmeta.Options{},
+		}
+
+		_, err := oaichat.OpenAIChatRequestToGeminiGenerateContent(ctx, req, meta)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "thinking_budget must be an integer")
+	})
+
 	t.Run("accepts valid thinking_level in extra_body", func(t *testing.T) {
 		extraBody := map[string]interface{}{
 			"google": map[string]interface{}{
@@ -94,5 +120,38 @@ func TestOpenAIChatRequestToGeminiGenerateContent_ThinkingConfigValidation(t *te
 		_, err := oaichat.OpenAIChatRequestToGeminiGenerateContent(ctx, req, meta)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "extra_body.google.thinking_config.thinkingLevel is not supported")
+	})
+
+	t.Run("extra_body with only image_config allows reasoning_effort auto-adaptation", func(t *testing.T) {
+		extraBody := map[string]interface{}{
+			"google": map[string]interface{}{
+				"image_config": map[string]interface{}{
+					"aspect_ratio": "1:1",
+				},
+			},
+		}
+		extraBodyBytes, _ := json.Marshal(extraBody)
+
+		req := dto.GeneralOpenAIRequest{
+			Model:           "gemini-3.7-flash",
+			ReasoningEffort: "high",
+			ExtraBody:       extraBodyBytes,
+			Messages: []dto.Message{
+				{Role: "user", Content: "draw something"},
+			},
+		}
+		meta := &convmeta.Values{
+			Options: &convmeta.Options{
+				Gemini: convmeta.GeminiOptions{
+					ThinkingAdapterEnabled: true,
+				},
+			},
+		}
+
+		geminiReq, err := oaichat.OpenAIChatRequestToGeminiGenerateContent(ctx, req, meta)
+		require.NoError(t, err)
+		require.NotNil(t, geminiReq.GenerationConfig.ThinkingConfig)
+		assert.Equal(t, "high", geminiReq.GenerationConfig.ThinkingConfig.ThinkingLevel)
+		assert.NotNil(t, geminiReq.GenerationConfig.ImageConfig)
 	})
 }
