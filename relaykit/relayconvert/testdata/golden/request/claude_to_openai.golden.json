@@ -44,7 +44,7 @@
   ],
   "stream": true,
   "max_tokens": 1024,
-  "reasoning_effort": "low",
+  "reasoning_effort": "medium",
   "tools": [
     {
       "type": "function",

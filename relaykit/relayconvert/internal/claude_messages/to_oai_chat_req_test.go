@@ -48,14 +48,44 @@ func TestClaudeMessagesRequestToOpenAIChat_ReasoningEffort(t *testing.T) {
 		assert.Equal(t, "high", meta.GetReasoningEffort())
 	})
 
-	t.Run("converts budget_tokens to appropriate reasoning_effort on standard channel", func(t *testing.T) {
+	t.Run("converts budget_tokens to appropriate reasoning_effort on standard channel (aligned with CCS)", func(t *testing.T) {
 		meta := &convmeta.Values{
 			Options: &convmeta.Options{},
 		}
-		budget := 10240
+		budgetHigh := 10240
+		claudeReqHigh := dto.ClaudeRequest{
+			Model:    "deepseek-v4-pro",
+			Thinking: &dto.Thinking{Type: "enabled", BudgetTokens: &budgetHigh},
+			Messages: []dto.ClaudeMessage{
+				{Role: "user", Content: "Hello"},
+			},
+		}
+
+		oaiReqHigh, err := claudemessages.ClaudeMessagesRequestToOpenAIChat(claudeReqHigh, meta)
+		require.NoError(t, err)
+		assert.Equal(t, "high", oaiReqHigh.ReasoningEffort)
+
+		budgetMed := 2048
+		claudeReqMed := dto.ClaudeRequest{
+			Model:    "deepseek-v4-pro",
+			Thinking: &dto.Thinking{Type: "enabled", BudgetTokens: &budgetMed},
+			Messages: []dto.ClaudeMessage{
+				{Role: "user", Content: "Hello"},
+			},
+		}
+
+		oaiReqMed, err := claudemessages.ClaudeMessagesRequestToOpenAIChat(claudeReqMed, meta)
+		require.NoError(t, err)
+		assert.Equal(t, "medium", oaiReqMed.ReasoningEffort)
+	})
+
+	t.Run("converts thinking type disabled to reasoning_effort none", func(t *testing.T) {
+		meta := &convmeta.Values{
+			Options: &convmeta.Options{},
+		}
 		claudeReq := dto.ClaudeRequest{
 			Model:    "deepseek-v4-pro",
-			Thinking: &dto.Thinking{Type: "enabled", BudgetTokens: &budget},
+			Thinking: &dto.Thinking{Type: "disabled"},
 			Messages: []dto.ClaudeMessage{
 				{Role: "user", Content: "Hello"},
 			},
@@ -63,7 +93,8 @@ func TestClaudeMessagesRequestToOpenAIChat_ReasoningEffort(t *testing.T) {
 
 		oaiReq, err := claudemessages.ClaudeMessagesRequestToOpenAIChat(claudeReq, meta)
 		require.NoError(t, err)
-		assert.Equal(t, "high", oaiReq.ReasoningEffort)
+		assert.Equal(t, "none", oaiReq.ReasoningEffort)
+		assert.Equal(t, "none", meta.GetReasoningEffort())
 	})
 
 	t.Run("retains OpenRouter dialect fields", func(t *testing.T) {

@@ -21,10 +21,13 @@ import (
 )
 
 func isNoThinkingRequest(req *dto.GeminiChatRequest) bool {
-	if req.GenerationConfig.ThinkingConfig != nil && req.GenerationConfig.ThinkingConfig.ThinkingBudget != nil {
-		configBudget := req.GenerationConfig.ThinkingConfig.ThinkingBudget
-		if configBudget != nil && *configBudget == 0 {
+	if req.GenerationConfig.ThinkingConfig != nil {
+		tc := req.GenerationConfig.ThinkingConfig
+		if tc.ThinkingBudget != nil && *tc.ThinkingBudget == 0 {
 			// 如果思考预算为 0，则认为是非思考请求
+			return true
+		}
+		if tc.ThinkingLevel == "minimal" || tc.ThinkingLevel == "none" || tc.ThinkingLevel == "off" || !tc.IncludeThoughts {
 			return true
 		}
 	}

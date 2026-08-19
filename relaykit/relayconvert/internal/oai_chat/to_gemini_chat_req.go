@@ -64,12 +64,22 @@ func OpenAIChatRequestToGeminiGenerateContent(c context.Context, textRequest dto
 					return nil, errors.New("extra_body.google.thinkingConfig is not supported, use extra_body.google.thinking_config instead")
 				}
 
-				if thinkingConfig, ok := googleBody["thinking_config"].(map[string]interface{}); ok {
-					if _, hasErrorParam := thinkingConfig["thinkingBudget"]; hasErrorParam {
-						return nil, errors.New("extra_body.google.thinking_config.thinkingBudget is not supported, use extra_body.google.thinking_config.thinking_budget instead")
-					}
-					var hasThinkingConfig bool
-					var tempThinkingConfig dto.GeminiThinkingConfig
+					if thinkingConfig, ok := googleBody["thinking_config"].(map[string]interface{}); ok {
+						if _, hasErrorParam := thinkingConfig["thinkingBudget"]; hasErrorParam {
+							return nil, errors.New("extra_body.google.thinking_config.thinkingBudget is not supported, use extra_body.google.thinking_config.thinking_budget instead")
+						}
+						if _, hasErrorParam := thinkingConfig["thinkingLevel"]; hasErrorParam {
+							return nil, errors.New("extra_body.google.thinking_config.thinkingLevel is not supported, use extra_body.google.thinking_config.thinking_level instead")
+						}
+
+						_, hasBudget := thinkingConfig["thinking_budget"]
+						_, hasLevel := thinkingConfig["thinking_level"]
+						if hasBudget && hasLevel {
+							return nil, errors.New("extra_body.google.thinking_config cannot contain both thinking_budget and thinking_level")
+						}
+
+						var hasThinkingConfig bool
+						var tempThinkingConfig dto.GeminiThinkingConfig
 
 					if thinkingBudget, exists := thinkingConfig["thinking_budget"]; exists {
 						switch v := thinkingBudget.(type) {

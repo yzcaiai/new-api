@@ -33,7 +33,7 @@
   "instructions": "You are a helpful assistant.",
   "max_output_tokens": 1024,
   "reasoning": {
-    "effort": "low",
+    "effort": "medium",
     "summary": "detailed"
   },
   "stream": true,

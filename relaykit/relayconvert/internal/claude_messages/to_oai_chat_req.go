@@ -40,30 +40,30 @@ func ClaudeMessagesRequestToOpenAIChat(claudeRequest dto.ClaudeRequest, info con
 		openAIRequest.Stream = kitutil.GetPointer(*claudeRequest.Stream)
 	}
 
-	isOpenRouter := convmeta.OptionsOf(info).OpenRouterDialect
-	effort := claudeRequest.GetEfforts()
-	if effort != "" {
-		openAIRequest.ReasoningEffort = effort
-		if info != nil {
-			info.SetReasoningEffort(effort)
-		}
-	} else if claudeRequest.Thinking != nil {
-		if claudeRequest.Thinking.Type == "enabled" {
-			budget := claudeRequest.Thinking.GetBudgetTokens()
-			if budget >= 8192 {
-				openAIRequest.ReasoningEffort = "high"
-			} else if budget >= 2048 {
-				openAIRequest.ReasoningEffort = "medium"
-			} else if budget > 0 {
-				openAIRequest.ReasoningEffort = "low"
+		isOpenRouter := convmeta.OptionsOf(info).OpenRouterDialect
+		effort := claudeRequest.GetEfforts()
+		if effort != "" {
+			openAIRequest.ReasoningEffort = effort
+			if info != nil {
+				info.SetReasoningEffort(effort)
 			}
-		} else if claudeRequest.Thinking.Type == "adaptive" {
-			openAIRequest.ReasoningEffort = "high"
+		} else if claudeRequest.Thinking != nil {
+			if claudeRequest.Thinking.Type == "disabled" {
+				openAIRequest.ReasoningEffort = "none"
+			} else if claudeRequest.Thinking.Type == "enabled" {
+				budget := claudeRequest.Thinking.GetBudgetTokens()
+				if budget >= 8192 {
+					openAIRequest.ReasoningEffort = "high"
+				} else {
+					openAIRequest.ReasoningEffort = "medium"
+				}
+			} else if claudeRequest.Thinking.Type == "adaptive" {
+				openAIRequest.ReasoningEffort = "high"
+			}
+			if info != nil && openAIRequest.ReasoningEffort != "" {
+				info.SetReasoningEffort(openAIRequest.ReasoningEffort)
+			}
 		}
-		if info != nil && openAIRequest.ReasoningEffort != "" {
-			info.SetReasoningEffort(openAIRequest.ReasoningEffort)
-		}
-	}
 
 	if isOpenRouter {
 		if effort != "" {
