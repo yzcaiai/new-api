@@ -58,6 +58,11 @@ func geminiCapabilitiesFor(model string) geminiCapabilities {
 		return geminiCapabilities{kind: geminiThinkingBudget, supportsDisable: true, maxBudget: 24576}
 	case strings.HasPrefix(model, "gemini-3"):
 		return geminiCapabilities{kind: geminiThinkingLevel}
+	case strings.HasPrefix(model, "gemini-4"):
+		// Gemini 4 rejects thinkingBudget outright and cannot disable
+		// thinking; only low/medium/high are accepted, with medium the
+		// documented default.
+		return geminiCapabilities{kind: geminiThinkingLevel}
 	default:
 		return geminiCapabilities{}
 	}
@@ -218,6 +223,9 @@ func geminiDefaultEffort(model string) Effort {
 	case model == "gemini-flash-latest",
 		strings.HasPrefix(model, "gemini-3.5-flash") && !strings.HasPrefix(model, "gemini-3.5-flash-lite"),
 		strings.HasPrefix(model, "gemini-3.6-flash"):
+		return EffortMedium
+	case strings.HasPrefix(model, "gemini-4"):
+		// Gemini 4 Argon documents medium as the family default.
 		return EffortMedium
 	case model == "gemini-flash-lite-latest",
 		strings.HasPrefix(model, "gemini-3.5-flash-lite"),
@@ -509,6 +517,11 @@ func geminiLevelForEffort(model string, effort Effort) (string, error) {
 		}
 		return string(EffortHigh), nil
 	case strings.HasPrefix(model, "gemini-3.1-pro"), model == "gemini-pro-latest":
+		if effort == EffortMinimal {
+			return string(EffortLow), nil
+		}
+	case strings.HasPrefix(model, "gemini-4"):
+		// Gemini 4 dropped minimal; it is the family's floor that moved up.
 		if effort == EffortMinimal {
 			return string(EffortLow), nil
 		}
